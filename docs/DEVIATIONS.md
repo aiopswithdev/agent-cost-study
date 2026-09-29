@@ -74,9 +74,39 @@ counted twice) and prints the whole ladder against the remaining budget.
 
 ## 2026-09-29 — T12: Pilot go/no-go decision
 
-<!-- FILL IN AFTER THE PILOT. -->
+### Pilot 1 (`results/pilot/`, kept as evidence): **NO-GO**
+- 420 runs, 0 errors, billed $0.156; empirical cache-read share 0.84.
+- ReAct invalid-action rate 76.7% (HotpotQA) and 40.0% (GSM8K); ReAct HotpotQA halt rate 62%
+  and EM 23.3% (below the 25–50% sanity band). Every other scaffold's parse health was fine.
+- Cause (from the traces, not from accuracy): `deepseek-flash` often writes the action **without
+  its label** (`Search[X]` instead of `Action 1: Search[X]`; 67 of 90 first ReAct moves on
+  HotpotQA) and wraps labels in **markdown** on GSM8K (`**Action 1:** Calculate[…]`). The strict
+  parser rejected these, the model repeated itself, and runs hit the 7-step cap.
+- This also **biased the comparison**: Reflexion's later trials open with a reflection header
+  that happened to elicit the labelled format more often, inflating its gap over ReAct.
+
+### Fix: tolerant action parsing (`scaffolds/base.py`), applied identically to every scaffold
+- Markdown emphasis around step labels is stripped (`**Action 1:**` → `Action 1:`); only the
+  label is touched, so `**` inside an argument (`Calculate[2**3]`) is preserved.
+- When no labelled `Action N:` exists, a line that **starts** with a **known** tool name and
+  `[` (`Search`, `Lookup`, `Calculate`, `Finish`, `LLM`) is accepted as the action.
+- The normalised text is what is stored and appended to the conversation (append-only kept).
+- Replayed on all 2,511 pilot actor/executor outputs: parse rate HotpotQA 58.0% → 99.8%,
+  GSM8K 88.2% → 99.4%; the remainder are genuine non-actions (thought-only text) and are still
+  answered with the invalid-action observation.
+- **No prompt was changed.** Model inputs change only in that the stored assistant turn is the
+  normalised text. Regression tests: `tests/test_parse.py` (built from real pilot outputs).
+- Allowed by plan §T12 ("fix prompts/parsers first … must be logged").
+
+### Pilot 2 (`results/pilot2/`): _TBD — rerun with the fixed parser, then decide here_
 - Decision: _TBD_
-- Evidence: `results/pilot/PILOT_REPORT.md`
+- Configuration chosen from the scope-down table: _TBD_
+- Evidence: `results/pilot2/PILOT_REPORT.md`
+
+### Observation to carry into the write-up: GSM8K ceiling
+Pilot-1 GSM8K accuracy was 80–97% for every scaffold. With this model, GSM8K will mostly
+discriminate scaffolds on **cost**, not accuracy; accuracy differences there will be small and
+need the full N to detect. Kept as pre-registered (it is the reasoning-dominated contrast).
 
 ## 2026-09-29 — T5/T8: tool names are canonicalised, not taken verbatim
 

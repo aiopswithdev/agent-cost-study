@@ -29,6 +29,35 @@ _ACTION_START = re.compile(r"Action\s*\d*\s*:\s*(\w+)\[")
 _ACTION_LINE = re.compile(r"Action\s*\d*\s*:\s*\w+\[.*\]", re.M)
 _FINISH_START = re.compile(r"Finish\[")
 
+#: Markdown emphasis around a step label: `**Action 1:**`, `**Action 1**:`, `__Thought 2:__`.
+#: Only the label is touched, so `**` inside an argument (`Calculate[2**3]`) is left alone.
+_MD_LABEL = re.compile(
+    r"(?:\*\*|__)[ \t]*(Thought|Action|Observation)([ \t]*\d*)[ \t]*:?[ \t]*(?:\*\*|__)[ \t]*:?[ \t]*"
+)
+#: A bare `Tool[arg]` at the start of a line (optionally after `*`, `-` or a backtick), for
+#: known tool names only. Used only when no labelled `Action N:` is present.
+_BARE_TOOL_LINE = re.compile(
+    r"^[ \t>*`-]*(" + "|".join(sorted(set(CANONICAL_TOOLS.values()))) + r")\[.*\]",
+    re.M | re.I,
+)
+
+
+def normalize_labels(text: str) -> str:
+    """`**Thought 1:** x` -> `Thought 1: x`. Idempotent; leaves everything else as is."""
+    return _MD_LABEL.sub(lambda m: f"{m.group(1)}{m.group(2).strip() and ' ' + m.group(2).strip()}: ",
+                         text or "")
+
+
+def _first_action_span(text: str) -> tuple[int, int, bool] | None:
+    """(start, end, labelled) of the first complete action line, labelled form preferred."""
+    m = _ACTION_LINE.search(text)
+    if m is not None:
+        return m.start(), m.end(), True
+    m = _BARE_TOOL_LINE.search(text)
+    if m is not None:
+        return m.start(), m.end(), False
+    return None
+
 
 def make_run_id(benchmark: str, task_id: str, scaffold: str, replicate: int) -> str:
     return f"{benchmark}:{task_id}:{scaffold}:{replicate}"
@@ -39,12 +68,23 @@ def parse_action(text: str) -> tuple[str, str] | None:
 
     The argument runs from the first `[` after the tool name to the **last** `]` on that
     same line, so answers containing brackets survive (`Finish[Arthur's Magazine [1844]]`).
+
+    Tolerated model habits (pilot, docs/DEVIATIONS.md): markdown around the labels
+    (`**Action 1:** Search[x]`) and a bare `Search[x]` line with no `Action N:` label. A bare
+    line is accepted only for a known tool name and only when no labelled action exists.
     """
-    m = _ACTION_START.search(text or "")
-    if m is None:
-        return None
-    tool = canonical_tool(m.group(1))
-    line = (text[m.end():].split("\n", 1)[0])
+    text = normalize_labels(text or "")
+    m = _ACTION_START.search(text)
+    if m is not None:
+        tool = canonical_tool(m.group(1))
+        line = text[m.end():].split("\n", 1)[0]
+    else:
+        span = _first_action_span(text)
+        if span is None:
+            return None
+        bare = _BARE_TOOL_LINE.match(text, span[0])
+        tool = canonical_tool(bare.group(1))
+        line = text[bare.end(1) + 1:].split("\n", 1)[0]
     close = line.rfind("]")
     if close == -1:
         return None
@@ -67,15 +107,18 @@ def extract_finish(text: str) -> str | None:
 
 
 def truncate_after_first_action(text: str) -> str:
-    """Keep only up to and including the first complete `Action …]` line.
+    """Keep only up to and including the first complete action line (labelled or bare).
 
     The model sometimes hallucinates several steps at once; what we store is exactly what
     we append to the conversation, which is what keeps conversations append-only (§4.1).
+    Step labels are de-markdowned first (`normalize_labels`), and that normalised text is
+    what gets stored and appended.
     """
-    m = _ACTION_LINE.search(text or "")
-    if m is None:
-        return text or ""
-    return text[: m.end()]
+    text = normalize_labels(text or "")
+    span = _first_action_span(text)
+    if span is None:
+        return text
+    return text[: span[1]]
 
 
 @dataclass
