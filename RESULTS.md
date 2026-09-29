@@ -71,11 +71,20 @@ reflexion_self therefore came out cheaper or dearer than reflexion_gt -->
 
 ## RQ3 — Do cost rankings change when priced in dollars with prompt caching?
 
-**Pre-registered hypothesis (H3).** `cost(rewoo)/cost(react)` is closer to 1 under
-`usd_ideal[1024]` than under raw tokens (`I+O`). Secondary prediction: on Haiku 4.5 the
-effect under `usd_ideal[4096]` and `usd_empirical` is **small**, because most single prompts
+**Pre-registered hypothesis (H3), as written.** `cost(rewoo)/cost(react)` is closer to 1
+under `usd_ideal[1024]` than under raw tokens (`I+O`). Secondary prediction: *"on Haiku 4.5
+the effect under `usd_ideal[4096]` and `usd_empirical` is small, because most single prompts
 in this study are shorter than the 4,096-token cacheable prefix — itself a reportable
-finding, namely that rankings depend on the model's cache threshold.
+finding, namely that rankings depend on the model's cache threshold."*
+
+> **The secondary prediction was conditioned on a model we did not run.** It assumed
+> Anthropic's 4,096-token minimum cacheable prefix. `deepseek-flash` caches every identical
+> prefix automatically with **no documented minimum** and reports hit tokens per call, so
+> `usd_empirical` is informative here rather than ≈ 0. The **primary** H3 test —
+> `usd_ideal[1024]` versus raw tokens — is unchanged and is what the verdict below rests on.
+> The `usd_ideal[L]` grid L ∈ {0, 1024, 4096} is kept exactly as pre-registered, which is
+> what makes the cache-threshold sensitivity itself readable off Table 3.
+> See `docs/DEVIATIONS.md`, entry *§2.1: model switched*.
 
 **Claim.** <!-- FILL -->
 
@@ -154,8 +163,10 @@ These are copied from §8 of `docs/IMPLEMENTATION_PLAN.md` and must be stated in
    makes it identical *across scaffolds*, which is what the comparison requires.
 9. **Empirical caching depends on the run schedule** (TTL, concurrency); hence
    `usd_ideal[L]` as the schedule-independent primary caching measure.
-10. **Single model** (Haiku 4.5); generalisation is future work (the config supports a
-    second model).
+10. **Single model** — pre-registered as Haiku 4.5, **run on `deepseek-flash`** with
+    thinking disabled (a pre-run, budget-driven change; see `docs/DEVIATIONS.md`).
+    Absolute numbers are not comparable to Haiku's; generalisation to a second model is
+    future work, and the config still supports it via `ACS_PROVIDER`.
 
 **Additional threats observed during the runs:** <!-- FILL, or write "none observed" -->
 
