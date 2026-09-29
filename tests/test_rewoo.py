@@ -99,3 +99,21 @@ async def test_solver_finish_wrapper_is_unwrapped():
     )
     result = await run_rewoo(ctx)
     assert result.final_answer == "Arthur's Magazine"
+
+
+def test_tool_names_are_canonicalised():
+    """`#E1 = llm[...]` must dispatch to the LLM worker, not to an unknown tool."""
+    steps = parse_plan("Plan: p\n#E1 = llm[do a thing]\n#E2 = search[X]\n")
+    assert [s.tool for s in steps] == ["LLM", "Search"]
+
+
+async def test_lowercase_llm_worker_still_runs():
+    ctx = make_ctx(
+        ["Plan: think.\n#E1 = llm[What year?]\n", "1844", "1844"],
+        scaffold="rewoo",
+        with_llm_worker=True,
+    )
+    result = await run_rewoo(ctx)
+    assert [r["role"] for r in ctx.llm.requests] == ["planner", "worker_llm", "solver"]
+    assert result.n_tool_calls["LLM"] == 1
+    assert result.final_answer == "1844"

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .. import config
 from ..prompts import library as lib
-from .base import RunContext, RunResult, extract_finish, finalize
+from .base import RunContext, RunResult, canonical_tool, extract_finish, finalize
 
 _PLAN_RE = re.compile(r"^\s*Plan\s*:\s*(.*)$")
 _EVIDENCE_RE = re.compile(r"^\s*#E(\d+)\s*=\s*(\w+)\[(.*)\]\s*$")
@@ -38,7 +38,7 @@ def parse_plan(text: str, max_evidence: int = config.REWOO_MAX_EVIDENCE) -> list
                 PlanStep(
                     index=int(em.group(1)),
                     plan=current_plan,
-                    tool=em.group(2).strip(),
+                    tool=canonical_tool(em.group(2)),
                     tool_input=em.group(3),
                 )
             )

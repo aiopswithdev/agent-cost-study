@@ -37,3 +37,21 @@ trajectories and would be off-distribution for arithmetic). Mandated by plan §T
 <!-- FILL IN AFTER THE PILOT. -->
 - Decision: _TBD_
 - Evidence: `results/pilot/PILOT_REPORT.md`
+
+## 2026-09-29 — T5/T8: tool names are canonicalised, not taken verbatim
+
+`parse_action` (T7) is specified to Title-case the tool name. A bare `.title()` turns
+`LLM` into `Llm`, which would break ReWOO's `#Ek = LLM[...]` worker, so both parsers now
+snap the Title-cased name to the exact spelling of a known tool (`Search`, `Lookup`,
+`Calculate`, `Finish`, `LLM`) case-insensitively, and fall through unchanged otherwise.
+
+**Reason:** identical behaviour to the spec for every tool the spec covers, and it stops a
+purely cosmetic casing difference in the model's output from being scored as an unknown
+tool. Unknown tools still produce the unknown-tool error string.
+
+## 2026-09-29 — T11: `--fake-llm` self-test flag on the runner
+
+The runner accepts `--fake-llm`, which drives the whole pipeline with scripted replies and
+makes no API calls. It exists only to exercise runner → JSONL → analysis offline (the T11
+acceptance criterion) and is never used for a real run; output written under such a run tag
+carries a warning banner in the log.

@@ -16,8 +16,14 @@ if TYPE_CHECKING:  # pragma: no cover
     from ..tools.toolbox import ToolBox
 
 #: Canonical spellings, so a lower/upper-cased tool name still dispatches.
-_CANONICAL = {"search": "Search", "lookup": "Lookup", "calculate": "Calculate",
-              "finish": "Finish", "llm": "LLM"}
+CANONICAL_TOOLS = {"search": "Search", "lookup": "Lookup", "calculate": "Calculate",
+                   "finish": "Finish", "llm": "LLM"}
+
+
+def canonical_tool(name: str) -> str:
+    """Title-case the tool name, then snap it to a known tool's exact spelling."""
+    title = (name or "").strip().title()
+    return CANONICAL_TOOLS.get(title.lower(), title)
 
 _ACTION_START = re.compile(r"Action\s*\d*\s*:\s*(\w+)\[")
 _ACTION_LINE = re.compile(r"Action\s*\d*\s*:\s*\w+\[.*\]", re.M)
@@ -37,8 +43,7 @@ def parse_action(text: str) -> tuple[str, str] | None:
     m = _ACTION_START.search(text or "")
     if m is None:
         return None
-    tool = m.group(1).strip().title()
-    tool = _CANONICAL.get(tool.lower(), tool)
+    tool = canonical_tool(m.group(1))
     line = (text[m.end():].split("\n", 1)[0])
     close = line.rfind("]")
     if close == -1:

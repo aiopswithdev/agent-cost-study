@@ -11,7 +11,7 @@
 > Do not hand-edit numbers: if a number is not reproducible from `results/main/{calls,runs}.jsonl`
 > by that command, it does not belong in this document.
 
-**Pre-registration commit hash:** <!-- FILL: `git log -1 --format=%H -- PREREGISTRATION.md` -->
+**Pre-registration commit hash:** `bb184f03b4c82883ca1b0572145c0c86f5340a6b` (frozen 2026-09-29, before any run)
 **Model:** `claude-haiku-4-5` · **N:** 300 tasks per benchmark · **Pool K:** 10 · **R:** 3
 **Benchmarks:** HotpotQA (distractor, validation) and GSM8K (main, test)
 
