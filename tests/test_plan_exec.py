@@ -1,4 +1,7 @@
+import json
+
 from acs import config
+from acs.llm import CallLog
 from acs.scaffolds.plan_exec import FALLBACK_STEP, parse_plan, run_plan_exec
 from tests.conftest import make_ctx
 
@@ -18,7 +21,7 @@ def test_unparsable_plan_falls_back_to_one_step():
     assert steps == [FALLBACK_STEP] and ok is False
 
 
-async def test_two_step_plan_runs_two_executor_conversations(fake_wiki):
+async def test_two_step_plan_runs_two_executor_conversations(tmp_path, fake_wiki):
     ctx = make_ctx(
         [
             "1. Find when Arthur's Magazine started.\n2. Find when First for Women started.",
@@ -30,6 +33,7 @@ async def test_two_step_plan_runs_two_executor_conversations(fake_wiki):
         ],
         scaffold="plan_exec",
         wiki=fake_wiki,
+        call_log=CallLog(tmp_path / "calls.jsonl"),
     )
     result = await run_plan_exec(ctx)
 
@@ -44,8 +48,17 @@ async def test_two_step_plan_runs_two_executor_conversations(fake_wiki):
     ]
 
     # Distinct conversations, each with turn_index restarting at 0.
-    rows = [e for e in ctx.trace if e["kind"] == "llm"]
+    rows = [json.loads(l) for l in (tmp_path / "calls.jsonl").read_text().splitlines()]
     assert len(rows) == 6
+    by_conversation: dict[str, list[int]] = {}
+    for row in rows:
+        by_conversation.setdefault(row["conversation_id"], []).append(row["turn_index"])
+    assert by_conversation == {
+        f"{ctx.run_id}:plan": [0],
+        f"{ctx.run_id}:step1": [0, 1],
+        f"{ctx.run_id}:step2": [0, 1],
+        f"{ctx.run_id}:solve": [0],
+    }
     assert result.n_tool_calls["Search"] == 2
 
     # Step 2's first message carries step 1's result; step 1's says "(none)".
