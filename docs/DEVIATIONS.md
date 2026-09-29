@@ -69,8 +69,10 @@ counted twice) and prints the whole ladder against the remaining budget.
 <!-- FILL IN BEFORE LAUNCHING T13. -->
 - Provider: DeepSeek, model `deepseek-flash`. Documented concurrency limit: 2,500 (far above the
   runner's `LLM_CONCURRENCY = 24`).
-- Credit balance at launch: $5.00 (topped up 2026-09-29); balance before the main run: _TBD_
-- Scope-down ladder (§6.3) steps applied, if any: _TBD after the pilot_
+- Model version behind the `deepseek-flash` alias: DeepSeek-V4.1-Flash (pricing page, 2026-09-29).
+- Credit balance at launch: $5.00 (topped up 2026-09-29); balance before the main run: $4.71
+  (after pilot 1 $0.156 and pilot 2 $0.138).
+- Scope-down ladder (§6.3) steps applied: **step 1** (GSM8K pool K=6); see the T12 entry.
 
 ## 2026-09-29 — T12: Pilot go/no-go decision
 
@@ -98,10 +100,21 @@ counted twice) and prints the whole ladder against the remaining budget.
   normalised text. Regression tests: `tests/test_parse.py` (built from real pilot outputs).
 - Allowed by plan §T12 ("fix prompts/parsers first … must be logged").
 
-### Pilot 2 (`results/pilot2/`): _TBD — rerun with the fixed parser, then decide here_
-- Decision: _TBD_
-- Configuration chosen from the scope-down table: _TBD_
-- Evidence: `results/pilot2/PILOT_REPORT.md`
+### Pilot 2 (`results/pilot2/`, fixed parser): **GO with §6.3 step 1**
+- 420 runs, 0 errors, billed $0.138; cache-read share 0.84.
+- Parse health fixed: ReAct invalid-action rate 3.3% on both benchmarks (was 76.7% / 40.0%);
+  ReAct HotpotQA EM 48.9% (inside the 25–50% band); plan parse 100%; judge parse failures 0.
+- The only failing check was cost. Actual balance before the main run:
+  $5.00 − $0.156 − $0.138 = **$4.71**. Projected off-peak bill: as pre-registered **$4.29**
+  (9% margin — too thin for a projection from 30 tasks, and a spend-guard trip mid-stage would
+  leave arms unevenly incomplete); **§6.3 step 1 (N=300, pool K=10 HotpotQA / 6 GSM8K, R=3)
+  $3.97** (16% margin).
+- **Decision:** launch §6.3 step 1, off-peak, spend guard `--max-usd 4.40` on the billed amount
+  (cumulative across the invocations of run tag `main`). Rationale: it is the first ladder step,
+  keeps N=300 and every Reflexion/ReWOO/Plan-Exec replicate, and only trims the GSM8K vote@k
+  curve from k≤10 to k≤6 — on a benchmark where the pilot shows every scaffold at 70–97%.
+- Launch order protects the key comparisons if the guard ever trips: HotpotQA pool → GSM8K pool
+  → Reflexion GT/Self → ReWOO/Plan-Exec.
 
 ### Observation to carry into the write-up: GSM8K ceiling
 Pilot-1 GSM8K accuracy was 80–97% for every scaffold. With this model, GSM8K will mostly
