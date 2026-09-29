@@ -14,7 +14,15 @@ import numpy as np
 import pandas as pd
 
 from .. import config
-from ..pricing import total_input, total_output, usd_empirical, usd_from_split, usd_nocache
+from ..pricing import (
+    prices_for,
+    total_input,
+    total_output,
+    usd_billed,
+    usd_empirical,
+    usd_from_split,
+    usd_nocache,
+)
 
 REGIMES = ("usd_nocache", "usd_empirical", "usd_ideal_0", "usd_ideal_1024", "usd_ideal_4096")
 
@@ -105,11 +113,16 @@ def add_ideal_regime(
     df[f"ideal_{L}_read"] = read
     df[f"ideal_{L}_write"] = write
     df[f"ideal_{L}_uncached"] = uncached
+    # Each row is priced with the sheet of the model that produced it (`pricing.prices_for`).
+    models = df["model"] if "model" in df else pd.Series(config.MODEL, index=df.index)
+    sheet = models.fillna(config.MODEL).map(lambda m: prices_for({"model": m}))
+    price = {k: sheet.map(lambda p, k=k: p[k]).to_numpy(dtype=float)
+             for k in ("input", "cache_write", "cache_read", "output")}
     df[ideal_col(L)] = (
-        uncached * config.PRICE_INPUT_PER_MTOK
-        + write * config.PRICE_CACHE_WRITE_PER_MTOK
-        + read * config.PRICE_CACHE_READ_PER_MTOK
-        + df["O"].to_numpy() * config.PRICE_OUTPUT_PER_MTOK
+        uncached * price["input"]
+        + write * price["cache_write"]
+        + read * price["cache_read"]
+        + df["O"].to_numpy() * price["output"]
     ) / 1e6
     return df.drop(columns=["_S", "_seen_before", "_prev_max_I"])
 
@@ -130,6 +143,8 @@ def add_all_regimes(
         return df
     df["usd_nocache"] = df.apply(lambda r: usd_nocache(r), axis=1)
     df["usd_empirical"] = df.apply(lambda r: usd_empirical(r), axis=1)
+    # The actual bill (time-of-day rate). Budget bookkeeping only, never an analysis regime.
+    df["usd_billed"] = df.apply(lambda r: usd_billed(r), axis=1)
     for L in Ls:
         df = add_ideal_regime(df, L, prompt_tokens)
     return df
@@ -180,7 +195,7 @@ def cost_of_pass(mean_cost: float, accuracy: float) -> float:
 
 
 def empirical_cache_read_share(calls: pd.DataFrame) -> float:
-    """Σ cache_read / Σ I — expected ≈ 0 on Haiku 4.5 (4,096-token threshold)."""
+    """Σ cache_read / Σ I — the share of input tokens the API served from its cache."""
     if not len(calls):
         return 0.0
     total = calls["I"].sum() if "I" in calls else calls.apply(total_input, axis=1).sum()

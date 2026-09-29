@@ -1,3 +1,4 @@
+from acs import config
 import pandas as pd
 import pytest
 
@@ -74,7 +75,18 @@ def test_L_zero_caches_everything_after_the_first_call():
 def test_ideal_price_matches_the_regime_formula():
     df = calls([{"input_tokens": 5000, "output_tokens": 100}])
     out = add_ideal_regime(df, 4096, {"p1": 100})
-    expected = (0 * 1.0 + 5000 * 1.25 + 0 * 0.10 + 100 * 5.0) / 1e6
+    p = config.MODEL_PROFILES[config.MODEL]
+    expected = (0 * p["input"] + 5000 * p["cache_write"] + 0 * p["cache_read"]
+                + 100 * p["output"]) / 1e6
+    assert abs(out[ideal_col(4096)].iloc[0] - expected) < 1e-15
+
+
+def test_ideal_prices_each_row_with_its_own_model():
+    """A log is priced with the sheet of the model that produced it, whatever is active."""
+    df = calls([{"input_tokens": 5000, "output_tokens": 100}])
+    df["model"] = "claude-haiku-4-5"
+    out = add_ideal_regime(df, 4096, {"p1": 100})
+    expected = (5000 * 1.25 + 100 * 5.0) / 1e6
     assert abs(out[ideal_col(4096)].iloc[0] - expected) < 1e-15
 
 

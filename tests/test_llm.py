@@ -154,21 +154,26 @@ async def test_spend_total_is_restored_from_an_existing_log(tmp_path):
 
 @pytest.mark.network
 async def test_live_smoke_call_logs_usage(tmp_path):
+    """One real call to the configured provider: text, usage, stop sequence, no thinking."""
     from acs import config
-    from acs.llm import LLM
+    from acs.llm import make_llm
 
-    log = CallLog(tmp_path / "calls.jsonl", max_usd=1.0)
-    llm = LLM(call_log=log, concurrency=1)
+    log = CallLog(tmp_path / "calls.jsonl", max_usd=0.05)
+    llm = make_llm(call_log=log, concurrency=1)
     try:
         res = await llm.call(
             role="actor", conversation_id="smoke", turn_index=0,
-            system_prompt_id="smoke_v1", system="You are terse.",
+            system_prompt_id="smoke_v1",
+            system="Reply in exactly this format, on two lines:\nThought 1: <a few words>\n"
+                   "Action 1: Finish[hi]\nThen write Observation 1: done",
             messages=[{"role": "user", "content": "Say hi."}],
-            max_tokens=16, temperature=0.7,
+            max_tokens=64, temperature=0.7, stop=["\nObservation"],
         )
     finally:
         await llm.aclose()
     assert res.text
-    assert res.usage["input_tokens"] > 0 and res.usage["output_tokens"] > 0
+    assert "Observation" not in res.text, "stop sequence was not honoured"
+    total_in = res.usage["input_tokens"] + res.usage["cache_read_input_tokens"]
+    assert total_in > 0 and res.usage["output_tokens"] > 0
     row = json.loads((tmp_path / "calls.jsonl").read_text().splitlines()[0])
     assert row["model"] == config.MODEL and row["error"] is None

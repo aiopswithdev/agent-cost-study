@@ -5,6 +5,7 @@ description = "Budget-matched, oracle-free comparison of LLM agent scaffolds"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic==1.9.0",
+    "openai==3.20.0",
     "httpx==0.28.1",
     "pandas==3.0.6",
     "pyarrow==25.0.1",
@@ -34,7 +35,7 @@ packages = ["src/acs"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "network: tests that hit the live network (Wikipedia / Anthropic / HuggingFace)",
+    "network: tests that hit the live network (Wikipedia / DeepSeek / HuggingFace)",
 ]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]

@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from acs import config
+from acs.pricing import usd_nocache
 from acs.scaffolds.base import make_run_id
 
 ANSWERS = {
@@ -181,9 +182,7 @@ def generate(
                         )
                     row["tokens_in"] = sum(c["input_tokens"] for c in run_calls)
                     row["tokens_out"] = sum(c["output_tokens"] for c in run_calls)
-                    row["usd_nocache"] = (
-                        row["tokens_in"] * 1.0 + row["tokens_out"] * 5.0
-                    ) / 1e6
+                    row["usd_nocache"] = sum(usd_nocache(c) for c in run_calls)
                     row["usd_empirical"] = row["usd_nocache"]
                     if scaffold.startswith("reflexion"):
                         row["tokens_in"] += row["extra"]["trial1_tokens_in"]

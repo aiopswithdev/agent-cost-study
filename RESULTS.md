@@ -12,7 +12,7 @@
 > by that command, it does not belong in this document.
 
 **Pre-registration commit hash:** `6656be08c2c44de55976db2767833c69a93cde08` (frozen 2026-09-29, before any run)
-**Model:** `claude-haiku-4-5` · **N:** 300 tasks per benchmark · **Pool K:** 10 · **R:** 3
+**Model:** `deepseek-flash`, thinking disabled (switched from `claude-haiku-4-5` before any run — see `docs/DEVIATIONS.md`) · **N / Pool K / R:** <!-- FILL: the configuration actually launched, from DEVIATIONS.md -->
 **Benchmarks:** HotpotQA (distractor, validation) and GSM8K (main, test)
 
 ---

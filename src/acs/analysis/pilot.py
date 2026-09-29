@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from .. import config
+from ..pricing import usd_billed, usd_empirical, usd_nocache
 from .costs import empirical_cache_read_share
 from .load import Dataset, load
 from .metrics import costed_runs
@@ -87,12 +88,38 @@ def per_scaffold(ds: Dataset, runs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def new_spend_per_run(ds: Dataset) -> pd.DataFrame:
+    """Mean *new* spend per run by (benchmark, scaffold), at list price with caching.
+
+    Uses only the calls logged under each run's own `run_id`. A Reflexion run's trial 1 is
+    a pool run that is already paid for, so it is correctly not counted twice here (the
+    analysis still bills it to Reflexion in full, §2.4 — that is a comparison, not a bill).
+    """
+    all_runs = pd.concat([ds.runs, ds.dropped], ignore_index=True)
+    n_runs = all_runs.groupby(["benchmark", "scaffold"]).size().rename("n_runs")
+    if not len(ds.calls):
+        out = n_runs.to_frame()
+        out["usd_list"] = 0.0
+        out["usd_billed"] = 0.0
+        return out.reset_index()
+    calls = ds.calls.copy()
+    calls["usd_list"] = calls.apply(lambda r: usd_empirical(r), axis=1)
+    calls["usd_billed"] = calls.apply(lambda r: usd_billed(r), axis=1)
+    spent = calls.groupby(["benchmark", "scaffold"])[["usd_list", "usd_billed"]].sum()
+    out = n_runs.to_frame().join(spent, how="left").fillna(0.0)
+    out["usd_list"] = out["usd_list"] / out["n_runs"]
+    out["usd_billed"] = out["usd_billed"] / out["n_runs"]
+    return out.reset_index()
+
+
 def project_main_run(
-    summary: pd.DataFrame, n: int = config.N, k: int = config.POOL_K, r: int = config.R
+    per_run: pd.DataFrame, summary: pd.DataFrame,
+    n: int = config.N, k: int = config.POOL_K, r: int = config.R,
 ) -> pd.DataFrame:
     """Planned main-run counts: N·K for the pool, N·R per other scaffold."""
+    wall = summary.set_index(["benchmark", "scaffold"])["mean_wall_s"]
     rows = []
-    for _, row in summary.iterrows():
+    for _, row in per_run.iterrows():
         planned = n * k if row["scaffold"] == "react" else n * r
         rows.append(
             Projection(
@@ -100,11 +127,50 @@ def project_main_run(
                 benchmark=row["benchmark"],
                 pilot_runs=int(row["n_runs"]),
                 planned_runs=planned,
-                mean_usd_per_run=row["mean_usd_nocache"],
-                projected_usd=planned * row["mean_usd_nocache"],
-                mean_wall_s=row["mean_wall_s"],
+                mean_usd_per_run=row["usd_list"],
+                projected_usd=planned * row["usd_list"],
+                mean_wall_s=float(wall.get((row["benchmark"], row["scaffold"]), float("nan"))),
             ).__dict__
         )
+    return pd.DataFrame(rows)
+
+
+_R_ALL3 = {s: 3 for s in config.OTHER_SCAFFOLDS}
+_R_PE2 = {**_R_ALL3, "rewoo": 2, "plan_exec": 2}
+#: The §6.3 scope-down ladder, then two further steps for a very small budget.
+#: (label, N, pool K per benchmark, R per other scaffold)
+LADDER = [
+    ("as pre-registered", 300, {"hotpotqa": 10, "gsm8k": 10}, _R_ALL3),
+    ("§6.3 step 1: GSM8K K=6", 300, {"hotpotqa": 10, "gsm8k": 6}, _R_ALL3),
+    ("§6.3 step 2: N=200", 200, {"hotpotqa": 10, "gsm8k": 6}, _R_ALL3),
+    ("§6.3 step 3: R=2 ReWOO/Plan-Exec", 200, {"hotpotqa": 10, "gsm8k": 6}, _R_PE2),
+    ("§6.3 step 4: HotpotQA K=6", 200, {"hotpotqa": 6, "gsm8k": 6}, _R_PE2),
+    ("extra: N=150", 150, {"hotpotqa": 6, "gsm8k": 6}, _R_PE2),
+    ("extra: N=100", 100, {"hotpotqa": 6, "gsm8k": 6}, _R_PE2),
+]
+
+
+def ladder_projection(per_run: pd.DataFrame, budget_usd: float) -> pd.DataFrame:
+    """Projected bill of every ladder configuration, at list (peak) and off-peak rates."""
+    u = per_run.set_index(["benchmark", "scaffold"])["usd_list"]
+    benchmarks = sorted(per_run["benchmark"].unique())
+    rows = []
+    for label, n, ks, rs in LADDER:
+        runs, usd = 0, 0.0
+        for b in benchmarks:
+            runs += n * ks[b]
+            usd += n * ks[b] * float(u.get((b, "react"), 0.0))
+            for s_, r_ in rs.items():
+                runs += n * r_
+                usd += n * r_ * float(u.get((b, s_), 0.0))
+        offpeak = usd * config.DEEPSEEK_OFFPEAK_MULTIPLIER
+        rows.append({
+            "configuration": label, "N": n,
+            "K (hotpot/gsm8k)": f"{ks['hotpotqa']}/{ks['gsm8k']}",
+            "R (rewoo,pe / reflexion)": f"{rs['rewoo']} / {rs['reflexion_gt']}",
+            "runs": runs, "usd_peak": usd, "usd_offpeak": offpeak,
+            "fits_offpeak": offpeak <= budget_usd, "fits_peak": usd <= budget_usd,
+        })
     return pd.DataFrame(rows)
 
 
@@ -152,8 +218,9 @@ def go_no_go(summary: pd.DataFrame, projected_usd: float, max_usd: float) -> lis
 
     if projected_usd > max_usd:
         issues.append(
-            f"**cost**: projected main run ${projected_usd:.0f} > MAX_USD ${max_usd:.0f} "
-            "— apply the scope-down ladder (§6.3) before launch."
+            f"**cost**: the pre-registered main run projects to ${projected_usd:.2f} off-peak, "
+            f"more than the remaining budget ${max_usd:.2f} — launch the largest configuration "
+            "marked as fitting in the scope-down table below, and log it in DEVIATIONS.md."
         )
     return issues
 
@@ -161,15 +228,25 @@ def go_no_go(summary: pd.DataFrame, projected_usd: float, max_usd: float) -> lis
 def build_report(ds: Dataset, max_usd: float = config.MAX_USD) -> str:
     runs = costed_runs(ds)
     summary = per_scaffold(ds, runs)
-    projection = project_main_run(summary)
-    projected_usd = float(projection["projected_usd"].sum())
+    per_run = new_spend_per_run(ds)
+    projection = project_main_run(per_run, summary)
+    projected_list = float(projection["projected_usd"].sum())
+    def _spent(fn) -> float:
+        return float(ds.calls.apply(lambda r: fn(r), axis=1).sum()) if len(ds.calls) else 0.0
+
+    pilot_billed = _spent(usd_billed)
+    pilot_list, pilot_nocache = _spent(usd_empirical), _spent(usd_nocache)
+    remaining = max(max_usd - pilot_billed, 0.0)
+    ladder = ladder_projection(per_run, remaining)
+    fitting = ladder[ladder["fits_offpeak"]]
+    projected_usd = projected_list * config.DEEPSEEK_OFFPEAK_MULTIPLIER
     runs_per_min = observed_runs_per_min(runs, config.MAX_RUNS_IN_FLIGHT)
     planned_runs = int(projection["planned_runs"].sum())
     projected_hours = (
         planned_runs / runs_per_min / 60.0 if runs_per_min and runs_per_min == runs_per_min
         else float("nan")
     )
-    issues = go_no_go(summary, projected_usd, max_usd)
+    issues = go_no_go(summary, projected_usd, remaining)
 
     parts = [
         f"# PILOT REPORT — run tag `{ds.run_tag}`",
@@ -177,11 +254,13 @@ def build_report(ds: Dataset, max_usd: float = config.MAX_USD) -> str:
         f"- pilot runs: **{len(ds.runs) + len(ds.dropped)}** "
         f"({len(ds.dropped)} errored)",
         f"- pilot LLM calls: **{len(ds.calls)}**",
-        f"- pilot spend (`usd_nocache`): **${runs['usd_nocache'].sum():.2f}** "
-        f"(empirical: ${runs['usd_empirical'].sum():.2f})",
+        f"- pilot bill: **${pilot_billed:.3f}** actually charged "
+        f"(list price: ${pilot_list:.3f} with cache, ${pilot_nocache:.3f} without)",
+        f"- budget: MAX_USD ${max_usd:.2f} − pilot ${pilot_billed:.3f} = "
+        f"**${remaining:.2f} remaining** for the main run",
         f"- empirical cache-read share (Σcache_read / ΣI): "
         f"**{empirical_cache_read_share(ds.calls):.4f}** "
-        "— expected ≈ 0 on Haiku 4.5, whose cacheable prefix is 4,096 tokens",
+        "(share of input tokens the provider served from its prefix cache)",
         "",
         "## Per scaffold × benchmark",
         "",
@@ -194,7 +273,22 @@ def build_report(ds: Dataset, max_usd: float = config.MAX_USD) -> str:
         "",
         projection.to_markdown(index=False, floatfmt=".4f"),
         "",
-        f"- **projected cost: ${projected_usd:.0f}** (`usd_nocache`; MAX_USD = ${max_usd:.0f})",
+        f"- **projected bill, as pre-registered: ${projected_list:.2f} at peak rates, "
+        f"${projected_usd:.2f} if run entirely off-peak** "
+        "(new spend per run at list price with caching; Reflexion trial 1 not double-counted)",
+        "",
+        "## Scope-down ladder vs. the remaining budget",
+        "",
+        ladder.to_markdown(index=False, floatfmt=".2f"),
+        "",
+        (
+            f"**Recommended:** `{fitting.iloc[0]['configuration']}` — the largest configuration "
+            f"that fits ${remaining:.2f} off-peak (${fitting.iloc[0]['usd_offpeak']:.2f}). "
+            "DeepSeek peak = 01:00–04:00 and 06:00–10:00 UTC, Mon–Fri; launch outside it."
+            if len(fitting) else
+            f"**No configuration fits ${remaining:.2f}** — top up the account or reduce N further."
+        ),
+        "",
         f"- observed throughput: **{runs_per_min:.1f} runs/min** at "
         f"MAX_RUNS_IN_FLIGHT={config.MAX_RUNS_IN_FLIGHT}",
         f"- **projected wall clock: {projected_hours:.1f} hours**",

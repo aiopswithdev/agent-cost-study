@@ -25,7 +25,7 @@ from tqdm import tqdm
 from . import config
 from .data import Task, load_tasks
 from .grading import gsm8k_gold, grade
-from .llm import LLM, BaseLLM, CallLog, FakeLLM, SpendLimitExceeded
+from .llm import BaseLLM, CallLog, FakeLLM, SpendLimitExceeded, make_llm
 from .prompts import library as lib
 from .scaffolds.base import RunContext, RunResult, make_run_id
 from .scaffolds.plan_exec import run_plan_exec
@@ -143,7 +143,9 @@ def build_work(
     tasks_by_benchmark: dict[str, list[Task]],
     k: int,
     r: int,
+    scaffolds: list[str] | tuple[str, ...] = config.OTHER_SCAFFOLDS,
 ) -> list[WorkItem]:
+    """`scaffolds` restricts the `others` stage (e.g. R=2 for ReWOO/Plan-Exec only, §6.3)."""
     work: list[WorkItem] = []
     for benchmark in benchmarks:
         for task in tasks_by_benchmark[benchmark]:
@@ -153,7 +155,8 @@ def build_work(
             else:
                 for rep in range(r):
                     for scaffold in config.OTHER_SCAFFOLDS:
-                        work.append(WorkItem(benchmark, task, scaffold, rep))
+                        if scaffold in scaffolds:
+                            work.append(WorkItem(benchmark, task, scaffold, rep))
     return work
 
 
@@ -282,8 +285,8 @@ async def run_stage(
                 rate = n / max(time.perf_counter() - started, 1e-9) * 60
                 tqdm.write(
                     f"[{stage}] {n}/{len(pending)} runs | "
-                    f"${llm.call_log.total_usd_nocache:.2f} nocache "
-                    f"(${llm.call_log.total_usd_empirical:.2f} empirical) | "
+                    f"billed ${llm.call_log.total_usd_billed:.3f} of "
+                    f"${llm.call_log.max_usd:.2f} | "
                     f"{rate:.1f} runs/min | errors={stats['errors']}"
                 )
 
@@ -306,17 +309,19 @@ async def async_main(args: argparse.Namespace) -> int:
     llm: BaseLLM = (
         FakeLLM(_smoke_responder, call_log=call_log)
         if args.fake_llm
-        else LLM(call_log=call_log, concurrency=args.llm_concurrency)
+        else make_llm(call_log=call_log, concurrency=args.llm_concurrency)
     )
     if args.fake_llm:
         print("!! --fake-llm: no API calls are made; this output is for pipeline self-test only")
+    else:
+        print(f"provider={config.PROVIDER} model={llm.model} | spend guard ${args.max_usd:.2f} billed")
     store = RunStore(run_dir / "runs.jsonl", keep_trace_below_replicate=args.r)
     wiki = default_client() if "hotpotqa" in args.benchmarks else None
 
     if call_log.n_calls:
         print(
             f"resuming: {call_log.n_calls} calls already logged "
-            f"(${call_log.total_usd_nocache:.2f} nocache), "
+            f"(${call_log.total_usd_billed:.3f} billed), "
             f"{sum(1 for s in store.status.values() if s == 'ok')} runs ok"
         )
 
@@ -325,6 +330,10 @@ async def async_main(args: argparse.Namespace) -> int:
     tasks_by_benchmark = {
         b: load_tasks(b, pilot=args.pilot, n=args.n) for b in args.benchmarks
     }
+    if args.limit is not None:
+        # The frozen sample is stored in shuffled order, so a prefix is a random subset
+        # (§6.3 "keep the first 200 IDs of the frozen sample").
+        tasks_by_benchmark = {b: ts[: args.limit] for b, ts in tasks_by_benchmark.items()}
     for b, ts in tasks_by_benchmark.items():
         print(f"{b}: {len(ts)} tasks")
 
@@ -332,7 +341,8 @@ async def async_main(args: argparse.Namespace) -> int:
     try:
         for stage in args.stages:
             work = shuffle_work(
-                build_work(stage, args.benchmarks, tasks_by_benchmark, args.k, args.r),
+                build_work(stage, args.benchmarks, tasks_by_benchmark, args.k, args.r,
+                           scaffolds=args.scaffolds),
                 seed=config.SEED,
             )
             stats = await run_stage(
@@ -349,8 +359,9 @@ async def async_main(args: argparse.Namespace) -> int:
         await close_default_client()
 
     print(
-        f"total: ${call_log.total_usd_nocache:.2f} nocache / "
-        f"${call_log.total_usd_empirical:.2f} empirical over {call_log.n_calls} calls; "
+        f"total: ${call_log.total_usd_billed:.3f} billed "
+        f"(list price: ${call_log.total_usd_empirical:.3f} with cache, "
+        f"${call_log.total_usd_nocache:.3f} without) over {call_log.n_calls} calls; "
         f"errors={total_errors}"
     )
     return 1 if total_errors else 0
@@ -368,7 +379,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--k", type=int, default=config.POOL_K, help="ReAct pool replicates")
     ap.add_argument("--r", type=int, default=config.R, help="replicates for other scaffolds")
     ap.add_argument("--n", type=int, default=config.N, help="frozen sample size to load")
-    ap.add_argument("--max-usd", type=float, default=config.MAX_USD)
+    ap.add_argument("--limit", type=int, default=None,
+                    help="use only the first LIMIT tasks of the frozen sample (scope-down)")
+    ap.add_argument("--scaffolds", nargs="+", default=list(config.OTHER_SCAFFOLDS),
+                    choices=list(config.OTHER_SCAFFOLDS),
+                    help="restrict the `others` stage to these scaffolds")
+    ap.add_argument("--max-usd", type=float, default=config.MAX_USD,
+                    help="spend guard on billed dollars; no new runs start past it")
     ap.add_argument("--max-runs-in-flight", type=int, default=config.MAX_RUNS_IN_FLIGHT)
     ap.add_argument("--llm-concurrency", type=int, default=config.LLM_CONCURRENCY)
     ap.add_argument("--fake-llm", action="store_true",

@@ -1,7 +1,8 @@
 """T3 — the single gateway for every LLM call in the study.
 
-Every scaffold calls `LLM.call`; nothing else talks to the Anthropic API. That is what
-makes the token/dollar accounting complete and identical across scaffolds.
+Every scaffold calls `BaseLLM.call`; nothing else talks to a model API. That is what
+makes the token/dollar accounting complete and identical across scaffolds. The provider
+(DeepSeek by default, Anthropic optionally) is picked by `make_llm` from `config.PROVIDER`.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from . import config
-from .pricing import usd_empirical, usd_nocache
+from .pricing import usd_billed, usd_empirical, usd_nocache
 
 if TYPE_CHECKING:  # pragma: no cover
     from .scaffolds.base import RunContext
@@ -34,7 +35,8 @@ EMPTY_TEXT_PLACEHOLDER = "(no output)"
 
 
 class SpendLimitExceeded(RuntimeError):
-    """Raised when the cumulative `usd_nocache` spend passes `MAX_USD`."""
+    """Raised when the billed spend passes `MAX_USD`, or the provider reports that the
+    account is out of credit or the key is invalid (nothing further can succeed)."""
 
 
 @dataclass
@@ -128,6 +130,7 @@ class CallLog:
         self.max_usd = max_usd
         self.total_usd_nocache = 0.0
         self.total_usd_empirical = 0.0
+        self.total_usd_billed = 0.0
         self.n_calls = 0
         self.stop = False
         self._lock = asyncio.Lock()
@@ -148,20 +151,23 @@ class CallLog:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                self.total_usd_nocache += usd_nocache(row)
-                self.total_usd_empirical += usd_empirical(row)
-                self.n_calls += 1
+                self._add(row)
         self._check_guard()
 
+    def _add(self, row: dict) -> None:
+        self.total_usd_nocache += usd_nocache(row)
+        self.total_usd_empirical += usd_empirical(row)
+        self.total_usd_billed += usd_billed(row)
+        self.n_calls += 1
+
     def _check_guard(self) -> None:
-        if self.total_usd_nocache >= self.max_usd:
+        # The guard watches what the account is actually charged (time-of-day rate).
+        if self.total_usd_billed >= self.max_usd:
             self.stop = True
 
     async def write(self, row: dict) -> None:
         async with self._lock:
-            self.total_usd_nocache += usd_nocache(row)
-            self.total_usd_empirical += usd_empirical(row)
-            self.n_calls += 1
+            self._add(row)
             self._check_guard()
             if self.path is None:
                 return
@@ -202,7 +208,8 @@ class BaseLLM:
         validate_messages(messages)
         if self.call_log.stop:
             raise SpendLimitExceeded(
-                f"cumulative usd_nocache exceeded MAX_USD={self.call_log.max_usd}"
+                f"billed spend reached MAX_USD={self.call_log.max_usd}, "
+                "or the provider rejected the key / reported no credit"
             )
 
         call_id = str(uuid.uuid4())
@@ -299,7 +306,7 @@ class BaseLLM:
 
 
 class LLM(BaseLLM):
-    """The real Anthropic client."""
+    """The Anthropic client (`ACS_PROVIDER=anthropic`)."""
 
     def __init__(
         self,
@@ -312,7 +319,7 @@ class LLM(BaseLLM):
         import anthropic
 
         self._client = anthropic.AsyncAnthropic(
-            api_key=api_key or config.api_key(),
+            api_key=api_key or config.api_key("anthropic"),
             max_retries=config.LLM_MAX_RETRIES,
             timeout=config.LLM_TIMEOUT_S,
         )
@@ -365,6 +372,179 @@ class LLM(BaseLLM):
 
     async def aclose(self) -> None:
         await self._client.close()
+
+
+AnthropicLLM = LLM
+
+
+class ThinkingModeError(RuntimeError):
+    """DeepSeek returned reasoning output although thinking was disabled on the request.
+
+    Hidden reasoning tokens would be billed as output and change the Thought/Action format,
+    which would invalidate the cost comparison, so the call fails loudly instead."""
+
+
+def to_openai_messages(system_blocks: Sequence[dict], messages: Sequence[dict]) -> list[dict]:
+    """Anthropic-shaped request -> OpenAI chat messages. `cache_control` markers are dropped:
+    DeepSeek caches every identical prefix automatically, so none are needed."""
+    out = [{"role": "system", "content": "".join(b["text"] for b in system_blocks)}]
+    for m in messages:
+        content = m["content"]
+        text = content if isinstance(content, str) else "".join(
+            b.get("text", "") for b in content
+        )
+        out.append({"role": m["role"], "content": text})
+    return out
+
+
+def usage_from_openai(usage: Any) -> dict[str, int]:
+    """Map DeepSeek usage onto the four fields of `calls.jsonl` (§4.1).
+
+    cache miss -> `input_tokens`, cache hit -> `cache_read_input_tokens`. DeepSeek has no
+    cache-write charge, so `cache_creation_input_tokens` is always 0.
+    """
+    if usage is None:
+        return _zero_usage()
+    prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
+    hit = getattr(usage, "prompt_cache_hit_tokens", None)
+    if hit is None:
+        details = getattr(usage, "prompt_tokens_details", None)
+        hit = getattr(details, "cached_tokens", 0) if details is not None else 0
+    hit = int(hit or 0)
+    miss = getattr(usage, "prompt_cache_miss_tokens", None)
+    miss = int(miss) if miss is not None else prompt - hit
+    if prompt and hit + miss != prompt:  # never let the fields disagree with the total
+        miss = prompt - hit
+    return {
+        "input_tokens": max(miss, 0),
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": hit,
+        "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+    }
+
+
+def reasoning_tokens(usage: Any) -> int:
+    details = getattr(usage, "completion_tokens_details", None) if usage is not None else None
+    return int(getattr(details, "reasoning_tokens", 0) or 0) if details is not None else 0
+
+
+_FINISH_TO_STOP_REASON = {"stop": "end_turn", "length": "max_tokens"}
+
+#: Sent on every request. DeepSeek's thinking mode is ON by default.
+DEEPSEEK_EXTRA_BODY = {"thinking": {"type": "disabled"}}
+
+
+class DeepSeekLLM(BaseLLM):
+    """The DeepSeek client (`ACS_PROVIDER=deepseek`, the default). OpenAI-compatible API,
+    thinking mode disabled on every request."""
+
+    def __init__(
+        self,
+        call_log: CallLog | None = None,
+        model: str | None = None,
+        concurrency: int = config.LLM_CONCURRENCY,
+        api_key: str | None = None,
+    ) -> None:
+        model = model or (
+            config.MODEL if config.PROVIDER == "deepseek" else config.DEFAULT_MODEL["deepseek"]
+        )
+        super().__init__(call_log=call_log, model=model)
+        import openai
+
+        self._openai = openai
+        self._client = openai.AsyncOpenAI(
+            api_key=api_key or config.api_key("deepseek"),
+            base_url=config.DEEPSEEK_BASE_URL,
+            max_retries=config.LLM_MAX_RETRIES,
+            timeout=config.LLM_TIMEOUT_S,
+        )
+        self._sem = asyncio.Semaphore(concurrency)
+        self._template_overhead: int | None = None
+
+    async def _create(self, **kwargs: Any) -> Any:
+        async with self._sem:
+            try:
+                return await self._client.chat.completions.create(
+                    model=self.model, extra_body=DEEPSEEK_EXTRA_BODY, **kwargs
+                )
+            except self._openai.APIStatusError as exc:
+                if exc.status_code in (401, 402):
+                    # Bad key or no credit: every further call would fail the same way.
+                    self.call_log.stop = True
+                    what = "invalid API key" if exc.status_code == 401 else "insufficient balance"
+                    raise SpendLimitExceeded(
+                        f"DeepSeek HTTP {exc.status_code} ({what}): {exc}"
+                    ) from exc
+                raise
+
+    async def _invoke(
+        self,
+        *,
+        system_blocks: list[dict],
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        stop: list[str] | None,
+        role: str,
+    ) -> tuple[str, str, dict[str, int], int]:
+        kwargs: dict[str, Any] = {
+            "messages": to_openai_messages(system_blocks, messages),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if stop:
+            kwargs["stop"] = list(stop)
+        resp = await self._create(**kwargs)
+
+        choice = resp.choices[0]
+        if getattr(choice.message, "reasoning_content", None) or reasoning_tokens(resp.usage):
+            raise ThinkingModeError(
+                "DeepSeek returned reasoning output with thinking disabled; refusing to log "
+                "a call whose cost includes hidden reasoning tokens"
+            )
+        text = choice.message.content or ""
+        stop_reason = _FINISH_TO_STOP_REASON.get(choice.finish_reason, choice.finish_reason)
+        return text, stop_reason or "end_turn", usage_from_openai(resp.usage), 1
+
+    async def _prompt_tokens(self, system: str, user: str) -> int:
+        resp = await self._create(
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            max_tokens=1,
+            temperature=0.0,
+        )
+        return int(resp.usage.prompt_tokens)
+
+    async def count_tokens(self, system: str, messages: list[dict]) -> int:
+        """System-prompt tokens for `prompt_tokens.json` (§4.3).
+
+        DeepSeek has no token-counting endpoint, so this makes one 1-token call per system
+        prompt and subtracts the chat-template overhead measured once with a 1-character
+        system prompt. These few calls cost well under a cent in total and are not logged
+        to `calls.jsonl`, which holds study calls only.
+        """
+        user = "x"
+        if self._template_overhead is None:
+            self._template_overhead = await self._prompt_tokens(".", user) - 1
+        return max(0, await self._prompt_tokens(system, user) - self._template_overhead)
+
+    async def aclose(self) -> None:
+        await self._client.close()
+
+
+def make_llm(
+    call_log: CallLog | None = None,
+    concurrency: int = config.LLM_CONCURRENCY,
+    provider: str | None = None,
+) -> BaseLLM:
+    """The real client for `config.PROVIDER` (or `provider`)."""
+    provider = provider or config.PROVIDER
+    if provider == "deepseek":
+        return DeepSeekLLM(call_log=call_log, concurrency=concurrency)
+    if provider == "anthropic":
+        return LLM(call_log=call_log, concurrency=concurrency,
+                   model=config.MODEL if config.PROVIDER == "anthropic"
+                   else config.DEFAULT_MODEL["anthropic"])
+    raise ValueError(f"unknown provider {provider!r}; expected one of {list(config.API_KEY_ENV)}")
 
 
 # --------------------------------------------------------------------------- test double

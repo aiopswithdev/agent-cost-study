@@ -128,4 +128,5 @@ def test_pilot_report_renders(dataset):
     assert "# PILOT REPORT" in text
     assert "Projected main run" in text
     assert "Go / no-go" in text
-    assert "projected cost" in text
+    assert "projected bill" in text
+    assert "Scope-down ladder" in text

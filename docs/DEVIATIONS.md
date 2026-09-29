@@ -23,14 +23,54 @@ environment". For GSM8K that phrase is replaced by "a calculator tool" and `{exa
 filled with the empty string (the vendored `REFLECTIONS` few-shots are HotpotQA
 trajectories and would be off-distribution for arithmetic). Mandated by plan §T6-I.
 
-## 2026-09-29 — T0: Rate limits and credit balance
+## 2026-09-29 — §2.1: model switched from `claude-haiku-4-5` to `deepseek-flash` (before any run)
 
-<!-- FILL IN BEFORE LAUNCHING T13. Blocking check per plan §T0.2. -->
-- Organisation RPM for `claude-haiku-4-5`: _TBD_
-- Organisation ITPM: _TBD_
-- Organisation OTPM: _TBD_
-- Credit balance at launch: _TBD_
-- Scope-down ladder (§6.3) steps applied, if any: _none yet_
+**When:** after the pre-registration commit, **before any pilot or main run** (`results/` was
+empty). No data informed this change.
+
+**What changed**
+- Model: `deepseek-flash` via DeepSeek's OpenAI-compatible API (`https://api.deepseek.com`),
+  with **thinking mode disabled on every request** (`extra_body={"thinking": {"type": "disabled"}}`).
+  A call that nevertheless returns reasoning output raises `ThinkingModeError` instead of being
+  logged, because hidden reasoning tokens would be billed as output.
+- Everything else in §2.1 is unchanged: temperature 0.7 (judge 0.0), per-role `max_tokens`,
+  stop sequences, prompts, tools, tasks, replicates, statistics.
+- Prices (USD / 1M tokens, list = peak): input (cache miss) 0.30, cache hit 0.006, output 1.20,
+  no cache-write premium (so `cache_write` = input price in `usd_ideal[L]`). Every logged call is
+  priced by its own `model` field, so logs can never be re-priced with the wrong sheet.
+- Off-peak (outside 01–04 and 06–10 UTC, Mon–Fri) DeepSeek charges exactly half on every line.
+  All analysis regimes use list prices, so **cost ratios between scaffolds are unaffected by when
+  a run happened**. The actual bill is tracked separately as `usd_billed`.
+- Spend guard: now on `usd_billed` (what the account is charged), default `MAX_USD = 4.50`
+  (was 250 on `usd_nocache`), to stay under a $5 balance.
+- `prompt_tokens.json`: DeepSeek has no token-count endpoint, so each system prompt is measured
+  with one 1-token call minus the chat-template overhead (measured once). These calls are not in
+  `calls.jsonl` and cost well under a cent.
+
+**Why:** budget. The study is self-funded with a $5 limit; Haiku 4.5 projected to $150–250.
+
+**Consequences for the claims**
+- Still a single-model study; the model is now `deepseek-flash`. Absolute numbers are not
+  comparable to Haiku; the Anthropic client is kept (`ACS_PROVIDER=anthropic`) for a later
+  second-model check.
+- H3 is **strengthened**, not weakened: DeepSeek caches every identical prefix automatically
+  and reports hit tokens per call, so the empirical caching regime is now informative (on Haiku
+  it would have been ≈ 0 because of the 4,096-token minimum). The `usd_ideal[L]` grid
+  L ∈ {0, 1024, 4096} is kept as the schedule-independent counterfactual, as pre-registered.
+- Prompts are sent to DeepSeek's servers. All inputs are public benchmark data.
+
+**Tooling added for the scope-down ladder (§6.3):** `--limit N` (first N tasks of the frozen,
+shuffled sample) and `--scaffolds …` (restrict the `others` stage, e.g. R=2 for ReWOO/Plan-Exec
+only). The pilot report now projects the *new* spend per run (Reflexion's reused trial 1 is not
+counted twice) and prints the whole ladder against the remaining budget.
+
+## 2026-09-29 — T0: Provider limits and credit balance
+
+<!-- FILL IN BEFORE LAUNCHING T13. -->
+- Provider: DeepSeek, model `deepseek-flash`. Documented concurrency limit: 2,500 (far above the
+  runner's `LLM_CONCURRENCY = 24`).
+- Credit balance at launch: $5.00 (topped up 2026-09-29); balance before the main run: _TBD_
+- Scope-down ladder (§6.3) steps applied, if any: _TBD after the pilot_
 
 ## 2026-09-29 — T12: Pilot go/no-go decision
 
