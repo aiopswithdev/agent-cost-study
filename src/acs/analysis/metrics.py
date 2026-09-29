@@ -343,7 +343,12 @@ def preregistered_comparisons(
                 )
             )
 
-        adjusted = holm([c.delta.p_value or 1.0 for c in family])
+        # A missing/NaN p counts as 1. (Never `p or 1.0`: that turns a p of 0.0 into 1.0.)
+        adjusted = holm([
+            1.0 if c.delta.p_value is None or c.delta.p_value != c.delta.p_value
+            else c.delta.p_value
+            for c in family
+        ])
         for comparison, p in zip(family, adjusted):
             comparison.holm_p = p
         out.extend(family)

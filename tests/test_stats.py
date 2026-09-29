@@ -69,7 +69,8 @@ def test_cost_of_pass_divides_by_accuracy():
 
 
 def test_two_sided_p_bounds():
-    assert two_sided_p(np.array([1.0, 2.0, 3.0])) == 0.0
+    # (count + 1) / (B + 1) tails: all 3 resamples positive -> 2 * 1/4, never exactly 0
+    assert two_sided_p(np.array([1.0, 2.0, 3.0])) == 0.5
     assert two_sided_p(np.array([-1.0, 1.0])) == 1.0
     assert 0.0 <= two_sided_p(np.array([-1.0, 1.0, 1.0, 1.0])) <= 1.0
 

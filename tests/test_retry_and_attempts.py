@@ -100,3 +100,15 @@ def test_load_bills_a_retried_run_once(tmp_path):
     assert ds.calls["call_id"].tolist() == ["c2"]
     assert len(ds.calls_all) == 2  # both attempts cost money
     assert ds.ownership["call_id"].tolist() == ["c2"]
+
+
+def test_holm_keeps_small_p_values_small():
+    from acs.analysis.stats import holm
+    assert holm([0.0005, 0.04, 0.3]) == [0.0015, 0.08, 0.3]
+
+
+def test_bootstrap_p_is_never_zero():
+    import numpy as np
+    from acs.analysis.stats import two_sided_p
+    p = two_sided_p(np.ones(2000))  # every resample on one side
+    assert 0 < p <= 2 / 2001 + 1e-15

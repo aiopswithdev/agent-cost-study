@@ -42,12 +42,16 @@ def _percentile_ci(samples: np.ndarray, alpha: float = 0.05) -> tuple[float, flo
 
 
 def two_sided_p(samples: np.ndarray) -> float:
-    """`p = 2 · min(P(Δ* ≤ 0), P(Δ* ≥ 0))`, clipped to [0, 1]."""
+    """`p = 2 · min(P(Δ* ≤ 0), P(Δ* ≥ 0))`, clipped to [0, 1].
+
+    Each tail uses the `(count + 1) / (B + 1)` estimate, so a bootstrap p-value is never
+    exactly 0: with B resamples the smallest reportable p is 2 / (B + 1).
+    """
     n = len(samples)
     if n == 0:
         return float("nan")
-    p_le = float(np.mean(samples <= 0))
-    p_ge = float(np.mean(samples >= 0))
+    p_le = (float(np.sum(samples <= 0)) + 1.0) / (n + 1.0)
+    p_ge = (float(np.sum(samples >= 0)) + 1.0) / (n + 1.0)
     return float(min(1.0, 2 * min(p_le, p_ge)))
 
 

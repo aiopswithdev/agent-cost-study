@@ -163,3 +163,16 @@ The runner accepts `--fake-llm`, which drives the whole pipeline with scripted r
 makes no API calls. It exists only to exercise runner → JSONL → analysis offline (the T11
 acceptance criterion) and is never used for a real run; output written under such a run tag
 carries a warning banner in the log.
+
+## 2026-09-29 — T14: analysis-code fixes after the main run (before interpretation)
+
+- **Holm correction bug.** `metrics.py` passed `p_value or 1.0` to `holm`; in Python `0.0 or 1.0`
+  is `1.0`, so every comparison with a bootstrap p of exactly 0 was Holm-adjusted to 1.0. Now a
+  p is replaced by 1.0 only when it is missing or NaN.
+- **Bootstrap p floor.** `two_sided_p` now uses `(count + 1) / (B + 1)` per tail, so a bootstrap
+  p is never reported as exactly 0 (smallest value 2/(B+1) ≈ 0.001 at B = 2,000).
+- Neither fix changes an estimate or a CI; they change only p-values. Tests added.
+- **Exploratory analyses added, labelled as such in RESULTS.md:** dollar-matched budget
+  comparison (`exploratory_dollar_matched.csv`) and a cache-threshold sweep L ∈ {0, 256, 512,
+  768, 1024, 1536, 2048, 4096} (`exploratory_h3_threshold_sweep.csv`). They were not
+  pre-registered and are not used for any hypothesis verdict.
