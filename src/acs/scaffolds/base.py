@@ -143,6 +143,9 @@ class RunContext:
             "n_steps": 0,
         }
     )
+    #: One id per execution of this run. A retried run gets a new one, and the analysis
+    #: bills a run only for the calls of its final attempt (`analysis.load`).
+    attempt_id: str | None = None
 
     @property
     def task_id(self) -> str:

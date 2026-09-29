@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import random
 import re
+import time
 import sqlite3
 import threading
 from dataclasses import dataclass, field
@@ -134,6 +136,23 @@ def lookup(page_text: str | None, keyword: str, state: LookupState) -> str:
 # --------------------------------------------------------------------------- client
 
 
+def _parse_retry_after(value: str | None) -> float | None:
+    """Seconds from a `Retry-After` header (delta-seconds form only), capped."""
+    if not value:
+        return None
+    try:
+        return min(max(float(value), 0.0), config.WIKI_BACKOFF_CAP_S)
+    except ValueError:
+        return None
+
+
+def _backoff(attempt: int) -> float:
+    """1, 2, 4, … s capped at WIKI_BACKOFF_CAP_S, with ±25% jitter."""
+    base = min(2.0**attempt, config.WIKI_BACKOFF_CAP_S)
+    return base * random.uniform(0.75, 1.25)
+
+
+
 class WikiClient:
     def __init__(
         self,
@@ -146,6 +165,9 @@ class WikiClient:
         self._sem = asyncio.Semaphore(concurrency)
         self._client: httpx.AsyncClient | None = None
         self.http_requests = 0
+        self.throttled = 0  # 429/5xx responses seen (for the progress log / tests)
+        # Monotonic time before which no request may start: set by any 429, obeyed by all.
+        self._cooldown_until = 0.0
 
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -164,11 +186,17 @@ class WikiClient:
 
         last_exc: Exception | None = None
         for attempt in range(config.WIKI_MAX_RETRIES):
+            wait = self._cooldown_until - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            retry_after: float | None = None
             try:
                 async with self._sem:
                     self.http_requests += 1
                     resp = await self._http().get(self.endpoint, params=params)
                 if resp.status_code == 429 or resp.status_code >= 500:
+                    self.throttled += 1
+                    retry_after = _parse_retry_after(resp.headers.get("retry-after"))
                     raise httpx.HTTPStatusError(
                         f"status {resp.status_code}", request=resp.request, response=resp
                     )
@@ -178,7 +206,11 @@ class WikiClient:
                 last_exc = exc
                 if attempt == config.WIKI_MAX_RETRIES - 1:
                     raise
-                await asyncio.sleep(2.0**attempt)
+                delay = retry_after if retry_after is not None else _backoff(attempt)
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429:
+                    # Throttled: every request pauses, so the pool stops hammering the API.
+                    self._cooldown_until = max(self._cooldown_until, time.monotonic() + delay)
+                await asyncio.sleep(delay)
                 continue
             await self.cache.put(key, json.dumps(data))
             return data

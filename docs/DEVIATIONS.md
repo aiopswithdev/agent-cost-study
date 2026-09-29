@@ -116,6 +116,31 @@ counted twice) and prints the whole ladder against the remaining budget.
 - Launch order protects the key comparisons if the guard ever trips: HotpotQA pool → GSM8K pool
   → Reflexion GT/Self → ReWOO/Plan-Exec.
 
+### Main run, attempt 1 (`results/main_aborted_429/`, kept as evidence): **ABORTED**
+- Command: HotpotQA pool stage, K=10. 3,000 runs, **2,451 errors (82%)**, billed $0.255.
+- Every error was `HTTPStatusError: status 429` from the **Wikipedia API** (not DeepSeek): 300 new
+  tasks at 8 parallel requests triggered Wikipedia's throttling, and the client gave up after 3
+  quick retries. Errored runs had made 0.2 Search calls on average before failing.
+- **Not resumed, set aside:** the 549 runs that succeeded are survivors of throttling (runs
+  whose Wikipedia requests happened to get through), a selection biased toward short, cache-hit
+  trajectories. Resuming would have mixed them with fresh draws. The whole attempt is discarded
+  and the pool is rerun from scratch under a new `results/main/`.
+- Fixes (no prompt, model or scaffold change):
+  1. `tools/wiki.py`: honours `Retry-After`; any 429 sets a **shared cooldown** that every
+     request waits out; 10 retries with jittered exponential backoff capped at 60 s;
+     `WIKI_CONCURRENCY` 8 → 3. The disk cache from the aborted run is kept: it is keyed on the
+     raw request and is the study-wide cache by design (§2.3).
+  2. **Attempt ids.** Every run execution gets a fresh `attempt_id`, written on its run row and on
+     every call it makes. The analysis bills a run **only for its final attempt's calls**
+     (`analysis.load.live_calls`); before this, a retried run would have been billed for its
+     failed attempts too, and the ideal-cache model would have seen two histories for one
+     conversation. Billing reports still count every call (`Dataset.calls_all`), since that money
+     was spent. Legacy rows without ids match run rows without ids.
+- Tests: `tests/test_retry_and_attempts.py`, plus a runner test that retries get a new id.
+- Budget after this attempt: $5.00 − $0.156 − $0.138 − $0.255 ≈ **$4.45** (confirm on the
+  DeepSeek dashboard). Configuration unchanged (§6.3 step 1, projected $3.97 off-peak); the
+  spend guard for the fresh `main` tag is set to **$4.20**.
+
 ### Observation to carry into the write-up: GSM8K ceiling
 Pilot-1 GSM8K accuracy was 80–97% for every scaffold. With this model, GSM8K will mostly
 discriminate scaffolds on **cost**, not accuracy; accuracy differences there will be small and

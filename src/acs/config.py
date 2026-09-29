@@ -110,7 +110,8 @@ VOTE_DRAWS = 200  # draws per k in the vote@k estimator (T14.3)
 # --------------------------------------------------------------------------- concurrency / guards
 MAX_RUNS_IN_FLIGHT = 32
 LLM_CONCURRENCY = 24
-WIKI_CONCURRENCY = 8
+#: Wikipedia throttles parallel anonymous API traffic (HTTP 429 in the first main run).
+WIKI_CONCURRENCY = 3
 #: Spend guard on the *billed* dollars (`pricing.usd_billed`), kept under the $5 balance.
 MAX_USD = 4.50
 LLM_MAX_RETRIES = 8
@@ -121,7 +122,10 @@ LLM_TIMEOUT_S = 300.0
 WIKI_ENDPOINT = "https://en.wikipedia.org/w/api.php"
 WIKI_CONTACT_EMAIL = "aapkamohallamumbai@gmail.com"
 WIKI_USER_AGENT = f"agent-cost-study/0.1 (academic research; contact: {WIKI_CONTACT_EMAIL})"
-WIKI_MAX_RETRIES = 3
+WIKI_MAX_RETRIES = 10
+#: Backoff between retries: exponential from 1 s, capped, with jitter; a `Retry-After`
+#: header, when present, wins. Every request waits out a 429's cooldown, not just the one hit.
+WIKI_BACKOFF_CAP_S = 60.0
 
 TOOLS_BY_BENCHMARK = {
     "hotpotqa": ("Search", "Lookup"),

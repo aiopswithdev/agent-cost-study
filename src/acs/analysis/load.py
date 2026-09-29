@@ -29,6 +29,9 @@ class Dataset:
     prompt_tokens: dict[str, int]
     dropped: pd.DataFrame  # runs with status != "ok"
     run_tag: str
+    #: Every logged call, including those of superseded (retried) attempts. Money was spent
+    #: on them, so billing uses this; every analysis number uses `calls` instead.
+    calls_all: pd.DataFrame | None = None
 
     @property
     def benchmarks(self) -> list[str]:
@@ -168,6 +171,10 @@ def load(run_tag: str, run_dir: Path | None = None, keep_traces: bool = False) -
         )
         calls["O"] = calls["output_tokens"]
 
+    calls_all = calls
+    if len(calls):
+        calls = live_calls(calls, rows)
+
     prompt_tokens_path = d / "prompt_tokens.json"
     prompt_tokens = (
         json.loads(prompt_tokens_path.read_text(encoding="utf-8"))
@@ -185,7 +192,30 @@ def load(run_tag: str, run_dir: Path | None = None, keep_traces: bool = False) -
         prompt_tokens=prompt_tokens,
         dropped=dropped,
         run_tag=run_tag,
+        calls_all=calls_all,
     )
+
+
+def live_calls(calls: pd.DataFrame, run_rows: list[dict]) -> pd.DataFrame:
+    """Calls made by the **final** attempt of each run (the one `runs.jsonl` ends with).
+
+    A retried run's earlier attempts also logged calls under the same `run_id`; billing a
+    run for them would inflate its cost and would give the ideal-cache model two histories
+    for one conversation. Rows written before attempt ids existed carry none; they match a
+    run row that also has none (such runs were executed exactly once).
+    """
+    def norm(value: object) -> str | None:  # None / NaN / "" -> None
+        if value is None or (isinstance(value, float) and value != value) or value == "":
+            return None
+        return str(value)
+
+    final = {r["run_id"]: norm(r.get("attempt_id")) for r in run_rows}
+    attempts = calls["attempt_id"].tolist() if "attempt_id" in calls else [None] * len(calls)
+    keep = [
+        run_id in final and final[run_id] == norm(att)
+        for run_id, att in zip(calls["run_id"].tolist(), attempts)
+    ]
+    return calls[keep].copy()
 
 
 def _ownership_table(

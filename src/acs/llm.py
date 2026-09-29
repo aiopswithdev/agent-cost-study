@@ -283,6 +283,7 @@ class BaseLLM:
             "task_id": getattr(ctx, "task_id", None),
             "scaffold": getattr(ctx, "scaffold", None),
             "replicate": getattr(ctx, "replicate", None),
+            "attempt_id": getattr(ctx, "attempt_id", None),
             "role": role,
             "conversation_id": conversation_id,
             "turn_index": turn_index,

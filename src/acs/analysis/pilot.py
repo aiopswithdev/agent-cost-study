@@ -231,8 +231,10 @@ def build_report(ds: Dataset, max_usd: float = config.MAX_USD) -> str:
     per_run = new_spend_per_run(ds)
     projection = project_main_run(per_run, summary)
     projected_list = float(projection["projected_usd"].sum())
+    billed_calls = ds.calls_all if ds.calls_all is not None else ds.calls
+
     def _spent(fn) -> float:
-        return float(ds.calls.apply(lambda r: fn(r), axis=1).sum()) if len(ds.calls) else 0.0
+        return float(billed_calls.apply(lambda r: fn(r), axis=1).sum()) if len(billed_calls) else 0.0
 
     pilot_billed = _spent(usd_billed)
     pilot_list, pilot_nocache = _spent(usd_empirical), _spent(usd_nocache)

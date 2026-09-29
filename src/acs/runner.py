@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import traceback
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -101,6 +102,7 @@ async def execute_run(
         llm=llm,
         toolbox=toolbox,
         trace=trace,
+        attempt_id=uuid.uuid4().hex,
     )
 
     try:
@@ -131,7 +133,9 @@ async def execute_run(
             trace=list(trace),
         )
     result.wall_s = time.perf_counter() - started
-    return result.to_dict()
+    row = result.to_dict()
+    row["attempt_id"] = ctx.attempt_id
+    return row
 
 
 # --------------------------------------------------------------------------- work lists
@@ -288,6 +292,8 @@ async def run_stage(
                     f"billed ${llm.call_log.total_usd_billed:.3f} of "
                     f"${llm.call_log.max_usd:.2f} | "
                     f"{rate:.1f} runs/min | errors={stats['errors']}"
+                    + (f" | wiki throttled={wiki.throttled}" if wiki is not None
+                       and hasattr(wiki, "throttled") else "")
                 )
 
     try:

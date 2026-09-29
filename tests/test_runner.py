@@ -171,3 +171,17 @@ def test_gold_for_extracts_the_gsm8k_number():
     assert gold_for(t) == "1234"
     h = Task(task_id="h", question="q", answer="yes", benchmark="hotpotqa")
     assert gold_for(h) == "yes"
+
+
+async def test_every_call_carries_its_runs_attempt_id_and_retries_get_a_new_one(tmp_path):
+    llm = make_llm(tmp_path)
+    store = RunStore(tmp_path / "runs.jsonl", keep_trace_below_replicate=2)
+    item = build_work("pool", ["hotpotqa"], {"hotpotqa": TASKS[:1]}, 1, 1)[0]
+    first = await execute_run(item, llm, store, wiki=FakeWiki(PAGES))
+    second = await execute_run(item, llm, store, wiki=FakeWiki(PAGES))
+    assert first["attempt_id"] and second["attempt_id"]
+    assert first["attempt_id"] != second["attempt_id"]
+    calls = read_jsonl(tmp_path / "calls.jsonl")
+    by_attempt = {c["attempt_id"] for c in calls}
+    assert by_attempt == {first["attempt_id"], second["attempt_id"]}
+    assert all(c["run_id"] == item.run_id for c in calls)
