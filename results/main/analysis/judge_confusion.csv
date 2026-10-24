@@ -1,0 +1,3 @@
+benchmark,n_judged_trials,true_accept,false_accept,true_reject,false_reject,false_accept_rate,false_reject_rate,judge_accuracy
+gsm8k,909,866,34,3,6,0.918918918918919,0.006880733944954129,0.9559955995599559
+hotpotqa,859,475,347,32,5,0.9155672823218998,0.010416666666666666,0.590221187427241

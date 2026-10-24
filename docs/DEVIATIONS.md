@@ -176,3 +176,26 @@ carries a warning banner in the log.
   comparison (`exploratory_dollar_matched.csv`) and a cache-threshold sweep L ∈ {0, 256, 512,
   768, 1024, 1536, 2048, 4096} (`exploratory_h3_threshold_sweep.csv`). They were not
   pre-registered and are not used for any hypothesis verdict.
+
+## 2026-10-05 — T14: figure styling and two added figures (presentation only)
+
+- The original figure palette failed a colour-blind safety check (orange vs green ΔE 4.5 under
+  protanopia). All figures now use four validated colours (ReAct blue, ReWOO orange,
+  Plan-and-Execute aqua, Reflexion violet); Reflexion-GT and Reflexion-Self share the violet and are
+  distinguished by fill (solid vs hollow/hatched) and direct labels. No number changed.
+- Added **Fig 6** (RQ1: gain over one ReAct attempt vs over budget-matched ReAct) and the
+  exploratory **Fig 7** (RQ3: cost ratio vs caching minimum L). The report command now also writes
+  `exploratory_h3_threshold_sweep.csv` and `exploratory_dollar_matched.csv` itself.
+- `RESULTS.md` wording corrected: budget matching removes 18–42% of every *significant* gain; the
+  one row where H1 holds (GSM8K Reflexion-Self, 62%) had a non-significant naive gain.
+
+## 2026-10-23 — T14: paper figures and report corrections (presentation only)
+
+- `python -m acs.analysis.report --paper` redraws every figure at ACL print size (column 7.7 cm,
+  full width 16 cm, Times-metric TrueType fonts, no titles) into `results/main/analysis/paper/`.
+  The report figures, CSVs, and `SUMMARY.md` are unchanged (checked pixel for pixel).
+- Corrections in `RESULTS.md` and `RQ_REPORT.md` found while writing the paper: H1 fails for the
+  **three** significant gains (not four) plus HotpotQA Plan-Exec; two CI bounds were mis-rounded
+  (HotpotQA Plan-Exec Δdef upper bound +5.4, not +5.5; GSM8K Reflexion-GT Δmatch upper bound +3.6,
+  not +3.7). The CSVs were always correct.
+- `results/` is now committed to the repository (previously git-ignored).

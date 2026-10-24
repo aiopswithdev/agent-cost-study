@@ -102,6 +102,21 @@ def test_full_report_runs_and_writes_every_artifact(dataset, tmp_path):
     assert (metrics["acc"] <= metrics["acc_ci_hi"] + 1e-9).all()
 
 
+def test_paper_figures_are_print_size(dataset, tmp_path):
+    """`--paper` writes only figures, each no wider than its ACL slot and close to it."""
+    import re
+
+    out = tmp_path / "paper"
+    REPORT.Report(dataset, out, B=80, vote_draws=20, paper=True).run_figures()
+    assert not list(out.glob("*.csv")) and not (out / "SUMMARY.md").exists()
+    for name, (_, _, (width_in, _)) in REPORT.PAPER_LAYOUT.items():
+        pdf = (out / f"{name}.pdf").read_bytes()
+        box = re.search(rb"/MediaBox \[\s*0 0 ([\d.]+) ([\d.]+)\s*\]", pdf)
+        width = float(box.group(1)) / 72
+        # The tight bounding box trims whitespace; it must not grow past the slot.
+        assert 0.85 * width_in <= width <= width_in + 0.05, (name, width)
+
+
 def test_report_is_deterministic(dataset, tmp_path):
     a = REPORT.Report(dataset, tmp_path / "a", B=100, vote_draws=20).run().read_text()
     b = REPORT.Report(dataset, tmp_path / "b", B=100, vote_draws=20).run().read_text()
