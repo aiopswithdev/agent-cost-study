@@ -99,6 +99,25 @@ trial 1 *is* a ReAct pool trajectory.
 | `src/acs/analysis/` | load, cost regimes, vote@k, statistics, RQ4, figures and tables |
 | `results/{run_tag}/` | `calls.jsonl`, `runs.jsonl`, `config.json`, `prompt_tokens.json`, `analysis/` |
 
+## Results in this repository
+
+`results/` is committed, so every number in `RESULTS.md`, `RQ_REPORT.md`, and the paper can be
+recomputed without new API calls:
+
+| Run tag | What |
+|---|---|
+| `main` | the study: 12,000 runs, 54,597 model calls (`analysis/` holds every table and figure; `analysis/paper/` the print-size figures) |
+| `pilot`, `pilot2` | the two pilots (30 questions per benchmark) |
+| `main_aborted_429` | the first main attempt, discarded after Wikipedia rate limits (kept as evidence) |
+
+The Wikipedia disk cache (`cache/`) and the downloaded datasets (`data/raw/`) are not committed;
+`data/samples/` fixes the 300 question IDs per benchmark.
+
+```bash
+python -m acs.analysis.report --run-tag main           # tables + figures -> results/main/analysis/
+python -m acs.analysis.report --run-tag main --paper   # figures at ACL print size -> analysis/paper/
+```
+
 Field names in `calls.jsonl` and `runs.jsonl` are a contract (§4 of the plan); the analysis
 depends on them.
 

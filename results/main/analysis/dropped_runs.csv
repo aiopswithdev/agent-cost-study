@@ -1,0 +1,11 @@
+benchmark,scaffold,n_total,n_dropped,frac_dropped
+gsm8k,plan_exec,900,0,0.0
+gsm8k,react,1800,0,0.0
+gsm8k,reflexion_gt,900,0,0.0
+gsm8k,reflexion_self,900,0,0.0
+gsm8k,rewoo,900,0,0.0
+hotpotqa,plan_exec,900,0,0.0
+hotpotqa,react,3000,0,0.0
+hotpotqa,reflexion_gt,900,0,0.0
+hotpotqa,reflexion_self,900,0,0.0
+hotpotqa,rewoo,900,0,0.0

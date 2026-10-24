@@ -1,0 +1,17 @@
+{
+  "worker_llm_v1": 20,
+  "react_hotpotqa_v1": 1608,
+  "rewoo_planner_hotpotqa_v1": 888,
+  "solver_hotpotqa_v1": 65,
+  "pe_planner_hotpotqa_v1": 307,
+  "pe_executor_hotpotqa_v1": 1622,
+  "reflector_hotpotqa_v1": 2348,
+  "judge_hotpotqa_v1": 93,
+  "react_gsm8k_v1": 493,
+  "rewoo_planner_gsm8k_v1": 462,
+  "solver_gsm8k_v1": 49,
+  "pe_planner_gsm8k_v1": 320,
+  "pe_executor_gsm8k_v1": 523,
+  "reflector_gsm8k_v1": 111,
+  "judge_gsm8k_v1": 93
+}

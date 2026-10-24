@@ -38,18 +38,20 @@
 **Pre-registered hypothesis (H1).** For each scaffold X with a positive naive gain, budget
 matching absorbs at least half of it: `Δmatch(X) ≤ 0.5 × Δdef(X)`.
 
-**Claim.** Budget matching shrinks every positive gain, but by 18–42%, not the ≥ 50% H1
-predicted; Reflexion (both stopping rules) still beats token-matched ReAct on HotpotQA.
+**Claim.** Budget matching shrinks every positive gain. For every gain that was statistically
+significant it removes 18–42%, not the ≥ 50% H1 predicted (the one exception, 62%, is GSM8K
+Reflexion-Self, whose +0.8-point naive gain was not significant to begin with); Reflexion (both
+stopping rules) still beats token-matched ReAct on HotpotQA.
 
 | Benchmark | Scaffold | k*(X) | Δ vs ReAct [95% CI] | Δ vs vote@k*(X) [95% CI] | H1 supported? |
 |---|---|---|---|---|---|
 | HotpotQA | ReWOO | 1.00 | −4.0 [−7.7, −0.3] | −3.8 [−7.4, −0.2] | n/a (no gain) |
-| HotpotQA | Plan-Exec | 1.58 | +2.4 [−0.4, +5.5] | +1.6 [−1.2, +4.5] | No |
+| HotpotQA | Plan-Exec | 1.58 | +2.4 [−0.4, +5.4] | +1.6 [−1.2, +4.5] | No |
 | HotpotQA | Reflexion-GT | 4.31 | **+8.3 [+6.0, +10.9]** | **+5.3 [+3.1, +7.5]** | No |
 | HotpotQA | Reflexion-Self | 2.29 | **+4.3 [+2.7, +6.3]** | **+2.5 [+0.9, +4.2]** | No |
 | GSM8K | ReWOO | 1.00 | −25.0 [−28.9, −21.3] | −25.4 [−29.3, −21.9] | n/a (no gain) |
 | GSM8K | Plan-Exec | 2.35 | −3.0 [−4.8, −1.4] | −4.0 [−5.7, −2.4] | n/a (no gain) |
-| GSM8K | Reflexion-GT | 1.21 | **+2.7 [+1.3, +4.3]** | **+2.2 [+1.0, +3.7]** | No |
+| GSM8K | Reflexion-GT | 1.21 | **+2.7 [+1.3, +4.3]** | **+2.2 [+1.0, +3.6]** | No |
 | GSM8K | Reflexion-Self | 1.21 | +0.8 [−0.0, +1.8] | +0.3 [−0.5, +1.1] | Yes (gain not significant) |
 
 (pp; k*(X) = number of ReAct samples whose majority vote costs the same tokens as X; no row
@@ -64,9 +66,10 @@ control uses more samples and the gains shrink further: HotpotQA Reflexion-GT +5
 **Figure.** `analysis/fig1_pareto.png` — ReAct's vote@k curve (k = 1..10) with its bootstrap band;
 Reflexion-GT is the only point clearly above the curve on HotpotQA.
 
-**Verdict.** H1 **not supported** on either benchmark. Budget matching matters (it removes
-18–42% of the naive gains, more when priced in dollars), but it does not erase Reflexion's
-advantage on the tool-heavy benchmark.
+**Verdict.** H1 **not supported**: it fails for all three significant gains and for HotpotQA Plan-Exec (it holds only for
+GSM8K Reflexion-Self, whose gain was never significant). Budget matching matters (it removes
+18–42% of the significant naive gains, more when priced in dollars), but it does not erase
+Reflexion's advantage on the tool-heavy benchmark.
 
 ---
 

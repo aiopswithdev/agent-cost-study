@@ -1,0 +1,182 @@
+{
+  "config": {
+    "API_KEY_ENV": {
+      "deepseek": "DEEPSEEK_API_KEY",
+      "anthropic": "ANTHROPIC_API_KEY"
+    },
+    "BENCHMARKS": [
+      "hotpotqa",
+      "gsm8k"
+    ],
+    "BOOT_B": 2000,
+    "CACHE_DIR": "/home/dev/Documents/DL-Research/agent-cost-study/cache",
+    "CACHE_MIN_TOKENS": {
+      "deepseek-flash": null,
+      "claude-haiku-4-5": 4096
+    },
+    "DATA_DIR": "/home/dev/Documents/DL-Research/agent-cost-study/data",
+    "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
+    "DEEPSEEK_OFFPEAK_MULTIPLIER": 0.5,
+    "DEEPSEEK_PEAK_HOURS_UTC": [
+      [
+        1,
+        4
+      ],
+      [
+        6,
+        10
+      ]
+    ],
+    "DEFAULT_MODEL": {
+      "deepseek": "deepseek-flash",
+      "anthropic": "claude-haiku-4-5"
+    },
+    "HF_PARQUET_URLS": {
+      "hotpotqa_validation": "https://huggingface.co/api/datasets/hotpotqa/hotpot_qa/parquet/distractor/validation/0.parquet",
+      "gsm8k_test": "https://huggingface.co/api/datasets/openai/gsm8k/parquet/main/test/0.parquet",
+      "gsm8k_train": "https://huggingface.co/api/datasets/openai/gsm8k/parquet/main/train/0.parquet"
+    },
+    "IDEAL_CACHE_L": [
+      0,
+      1024,
+      4096
+    ],
+    "LLM_CONCURRENCY": 24,
+    "LLM_MAX_RETRIES": 8,
+    "LLM_TIMEOUT_S": 300.0,
+    "MAX_RUNS_IN_FLIGHT": 32,
+    "MAX_TOKENS": {
+      "actor": 512,
+      "planner": 1024,
+      "executor": 512,
+      "solver": 256,
+      "worker_llm": 256,
+      "reflector": 512,
+      "judge": 256
+    },
+    "MAX_USD": 4.5,
+    "MODEL": "deepseek-flash",
+    "MODEL_PROFILES": {
+      "deepseek-flash": {
+        "provider": "deepseek",
+        "input": 0.3,
+        "output": 1.2,
+        "cache_write": 0.3,
+        "cache_read": 0.006,
+        "cache_min_tokens": null
+      },
+      "claude-haiku-4-5": {
+        "provider": "anthropic",
+        "input": 1.0,
+        "output": 5.0,
+        "cache_write": 1.25,
+        "cache_read": 0.1,
+        "cache_min_tokens": 4096
+      }
+    },
+    "N": 300,
+    "OBS_MAX_CHARS": 1500,
+    "OTHER_SCAFFOLDS": [
+      "rewoo",
+      "plan_exec",
+      "reflexion_gt",
+      "reflexion_self"
+    ],
+    "PE_MAX_EXEC_STEPS": 4,
+    "PE_MAX_PLAN_STEPS": 5,
+    "PILOT_N": 30,
+    "POOL_K": 10,
+    "PRICE_CACHE_READ_PER_MTOK": 0.006,
+    "PRICE_CACHE_WRITE_PER_MTOK": 0.3,
+    "PRICE_INPUT_PER_MTOK": 0.3,
+    "PRICE_OUTPUT_PER_MTOK": 1.2,
+    "PROVIDER": "deepseek",
+    "R": 3,
+    "RAW_DIR": "/home/dev/Documents/DL-Research/agent-cost-study/data/raw",
+    "REACT_MAX_STEPS": 7,
+    "REFLEXION_MAX_TRIALS": 5,
+    "REFLEXION_MEMORY": 3,
+    "RESULTS_DIR": "/home/dev/Documents/DL-Research/agent-cost-study/results",
+    "REWOO_EXTRA_TOOLS": [
+      "LLM"
+    ],
+    "REWOO_MAX_EVIDENCE": 8,
+    "ROLES": [
+      "actor",
+      "planner",
+      "executor",
+      "solver",
+      "worker_llm",
+      "reflector",
+      "judge"
+    ],
+    "ROOT": "/home/dev/Documents/DL-Research/agent-cost-study",
+    "SAMPLES_DIR": "/home/dev/Documents/DL-Research/agent-cost-study/data/samples",
+    "SCAFFOLDS": [
+      "react",
+      "rewoo",
+      "plan_exec",
+      "reflexion_gt",
+      "reflexion_self"
+    ],
+    "SCRATCHPAD_MAX_CHARS": 6000,
+    "SEED": 2026,
+    "TEMPERATURE": 0.7,
+    "TEMPERATURE_JUDGE": 0.0,
+    "TOOLS_BY_BENCHMARK": {
+      "hotpotqa": [
+        "Search",
+        "Lookup"
+      ],
+      "gsm8k": [
+        "Calculate"
+      ]
+    },
+    "VOTE_DRAWS": 200,
+    "WIKI_CACHE_PATH": "/home/dev/Documents/DL-Research/agent-cost-study/cache/wiki.sqlite",
+    "WIKI_CONCURRENCY": 8,
+    "WIKI_CONTACT_EMAIL": "aapkamohallamumbai@gmail.com",
+    "WIKI_ENDPOINT": "https://en.wikipedia.org/w/api.php",
+    "WIKI_MAX_RETRIES": 3,
+    "WIKI_USER_AGENT": "agent-cost-study/0.1 (academic research; contact: aapkamohallamumbai@gmail.com)"
+  },
+  "git_commit": "eafbc9250936f1c163a8acf8fa51320d6bdcc32d",
+  "cli_args": {
+    "run_tag": "main",
+    "benchmarks": [
+      "hotpotqa"
+    ],
+    "stages": [
+      "pool"
+    ],
+    "pilot": false,
+    "k": 10,
+    "r": 3,
+    "n": 300,
+    "limit": null,
+    "scaffolds": [
+      "rewoo",
+      "plan_exec",
+      "reflexion_gt",
+      "reflexion_self"
+    ],
+    "max_usd": 4.4,
+    "max_runs_in_flight": 32,
+    "llm_concurrency": 24,
+    "fake_llm": false
+  },
+  "argv": [
+    "/home/dev/Documents/DL-Research/agent-cost-study/src/acs/runner.py",
+    "--run-tag",
+    "main",
+    "--benchmarks",
+    "hotpotqa",
+    "--stages",
+    "pool",
+    "--k",
+    "10",
+    "--max-usd",
+    "4.40"
+  ],
+  "launched_at": "2026-09-29T22:00:39+0530"
+}
